@@ -22,3 +22,24 @@ Xのプロフィールを開き、アカウントと年月を指定して過去�
 投稿一覧で「表示中の投稿を取得」を押し、JSONファイルの保存先を選びます。ボタンを押した時点で画面に一部でも見えている投稿を対象にします。次の投稿を保存するには、Xの画面をスクロールしてもう一度押します。
 
 保存する項目は投稿ID、投稿者のユーザー名と表示名、画面から読み取った本文、投稿日時（UTC）、投稿URL、本文の省略フラグです。「さらに表示」で折りたたまれた投稿では、画面に読み込まれている本文を保存し、省略フラグを設定します。
+
+## MySQL 8.4用のSQL
+
+[テーブル作成](sql/001_create_x_posts.sql)を、保存先のデータベースを選んで実行します。投稿IDは `XPost.Id` と同じ文字列で保持し、主キーにします。日時は投稿日時とデータベースの初回・最終保存日時をUTCで保持します。
+
+[保存クエリ](sql/upsert_x_post.sql)は、同じIDの投稿があれば更新します。保存済みの完全な本文を省略版や空欄で上書きせず、省略版同士では長い本文を優先します。Dapperに渡すパラメーターは次のように組み立てます。
+
+```csharp
+var parameters = new
+{
+    PostId = post.Id,
+    post.AuthorHandle,
+    post.AuthorDisplayName,
+    PostText = post.Text,
+    PublishedAtUtc = post.PublishedAtUtc.UtcDateTime,
+    PostUrl = post.Url,
+    post.IsTextTruncated
+};
+```
+
+[一覧クエリ](sql/select_x_posts_by_author.sql)は、`@AuthorHandle` に先頭の `@` を除いたユーザー名、`@StartUtc` と `@EndUtc` に検索期間の開始と終了を渡します。開始日時を含み、終了日時を除きます。
