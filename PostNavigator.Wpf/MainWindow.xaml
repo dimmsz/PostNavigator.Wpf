@@ -76,6 +76,46 @@
                         <Button x:Name="CapturePostsButton" Content="表示中の投稿を取得" Margin="0,12,0,0"
                                 HorizontalAlignment="Stretch" Click="CaptureVisiblePosts"
                                 ToolTip="画面内の投稿を取得してデータベースに保存します" />
+                        <CheckBox x:Name="AutomaticCaptureSwitch" Content="自動取得" Margin="0,12,0,0"
+                                  Checked="AutomaticCaptureChanged" Unchecked="AutomaticCaptureChanged"
+                                  ToolTip="表示中の投稿を自動で取得してデータベースに保存します">
+                            <CheckBox.Template>
+                                <ControlTemplate TargetType="CheckBox">
+                                    <Border x:Name="SwitchOutline" MinHeight="34" Padding="4,2"
+                                            CornerRadius="4" BorderThickness="1" BorderBrush="Transparent"
+                                            Background="Transparent">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <Border x:Name="SwitchTrack" DockPanel.Dock="Right"
+                                                    Width="38" Height="20" CornerRadius="10" BorderThickness="1"
+                                                    BorderBrush="{DynamicResource ControlStrongFillColorDefaultBrush}">
+                                                <Ellipse x:Name="SwitchThumb" Width="12" Height="12" Margin="3,0"
+                                                         HorizontalAlignment="Left" VerticalAlignment="Center"
+                                                         Fill="{DynamicResource TextFillColorPrimaryBrush}" />
+                                            </Border>
+                                            <ContentPresenter Margin="0,0,8,0" VerticalAlignment="Center"
+                                                              RecognizesAccessKey="True" />
+                                        </DockPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="SwitchTrack" Property="Background"
+                                                    Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                            <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="Transparent" />
+                                            <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right" />
+                                            <Setter TargetName="SwitchThumb" Property="Fill"
+                                                    Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsKeyboardFocused" Value="True">
+                                            <Setter TargetName="SwitchOutline" Property="BorderBrush"
+                                                    Value="{DynamicResource TextFillColorPrimaryBrush}" />
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter TargetName="SwitchOutline" Property="Opacity" Value="0.5" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </CheckBox.Template>
+                        </CheckBox>
                     </StackPanel>
                 </ScrollViewer>
             </Border>
