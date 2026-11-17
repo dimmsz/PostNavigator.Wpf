@@ -13,4 +13,4 @@ CREATE TABLE IF NOT EXISTS x_posts (
     CONSTRAINT chk_x_posts_text_truncated CHECK (is_text_truncated IN (0, 1))
 ) ENGINE = InnoDB
   DEFAULT CHARACTER SET = utf8mb4
-  COLLATE = utf8mb4_0900_ai_ci;
+  COLLATE = utf8mb4_unicode_ci;
