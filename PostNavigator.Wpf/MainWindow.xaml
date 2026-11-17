@@ -113,6 +113,9 @@
                         </Grid>
                         <Button Content="この期間の投稿を検索" Style="{StaticResource PrimaryButton}"
                                 Click="SearchPosts" />
+                        <Button x:Name="CapturePostsButton" Content="表示中の投稿を取得" Margin="0,12,0,0"
+                                Style="{StaticResource ActionButton}" Click="CaptureVisiblePosts"
+                                ToolTip="画面内の投稿を取得してJSONで保存します" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>

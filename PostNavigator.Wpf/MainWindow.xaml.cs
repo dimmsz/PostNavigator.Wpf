@@ -1,7 +1,10 @@
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
+using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 
 namespace PostNavigator.Wpf;
@@ -139,6 +142,67 @@ public partial class MainWindow : Window
         {
             var (start, end) = XNavigation.DateRange(year, month);
             Navigate(XNavigation.Search(account, start, end));
+        }
+    }
+
+    private async void CaptureVisiblePosts(object sender, RoutedEventArgs e)
+    {
+        if (Browser.CoreWebView2 is not { } web || !XNavigation.IsXPage(web.Source))
+        {
+            Status.Text = "Xで投稿を表示してから取得してください。";
+            return;
+        }
+
+        CapturePostsButton.IsEnabled = false;
+        Status.Text = "表示中の投稿を取得しています…";
+
+        try
+        {
+            var posts = await VisiblePostReader.ReadAsync(web);
+            if (closed)
+            {
+                return;
+            }
+            if (posts.Length == 0)
+            {
+                Status.Text = "取得できる投稿が画面内にありません。";
+                return;
+            }
+
+            var dialog = new SaveFileDialog
+            {
+                Title = $"取得した投稿 {posts.Length}件を保存",
+                FileName = FormattableString.Invariant($"x-posts-{DateTime.Now:yyyyMMdd-HHmmss}.json"),
+                DefaultExt = ".json",
+                Filter = "JSON ファイル (*.json)|*.json"
+            };
+
+            if (dialog.ShowDialog(this) != true)
+            {
+                Status.Text = $"{posts.Length}件を取得しました。保存はキャンセルされました。";
+                return;
+            }
+
+            await PostJsonFile.SaveAsync(dialog.FileName, posts);
+            if (!closed)
+            {
+                Status.Text = $"{posts.Length}件を保存しました（{Path.GetFileName(dialog.FileName)}）。";
+            }
+        }
+        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException
+            or InvalidOperationException or JsonException)
+        {
+            if (!closed)
+            {
+                Status.Text = $"投稿を取得または保存できませんでした（{ex.Message}）。";
+            }
+        }
+        finally
+        {
+            if (!closed)
+            {
+                CapturePostsButton.IsEnabled = true;
+            }
         }
     }
 

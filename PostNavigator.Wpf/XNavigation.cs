@@ -9,6 +9,12 @@ internal static partial class XNavigation
     public static Uri Home { get; } = new("https://x.com/");
     public static Uri SignIn { get; } = new(Home, "i/flow/login");
 
+    public static bool IsXPage(string? address)
+    {
+        return Uri.TryCreate(address, UriKind.Absolute, out var uri) &&
+            uri.Scheme == Uri.UriSchemeHttps && IsProfileHost(uri.Host);
+    }
+
     public static bool TryGetAccount(string input, out string account)
     {
         account = input.Trim();
