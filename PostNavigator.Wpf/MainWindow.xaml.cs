@@ -1,11 +1,12 @@
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Input;
-using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
+using MySqlConnector;
 
 namespace PostNavigator.Wpf;
 
@@ -14,6 +15,7 @@ public partial class MainWindow : Window
     private const string InitialAccount = "cissan_9984";
     private ulong activeNavigation;
     private bool closed;
+    private CancellationTokenSource? captureOperation;
 
     public MainWindow()
     {
@@ -147,12 +149,36 @@ public partial class MainWindow : Window
 
     private async void CaptureVisiblePosts(object sender, RoutedEventArgs e)
     {
+        if (captureOperation is not null)
+        {
+            return;
+        }
+
         if (Browser.CoreWebView2 is not { } web || !XNavigation.IsXPage(web.Source))
         {
             Status.Text = "Xで投稿を表示してから取得してください。";
             return;
         }
 
+        string connectionString;
+        try
+        {
+            connectionString = DatabaseSettings.LoadConnectionString();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CryptographicException)
+        {
+            Status.Text = "接続文字列を読み込めませんでした。設定画面で保存し直してください。";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(connectionString) || !DatabaseConnectionTest.HasValidOptions(connectionString))
+        {
+            Status.Text = "設定画面でデータベースの接続文字列を登録してください。";
+            return;
+        }
+
+        using var operation = new CancellationTokenSource();
+        captureOperation = operation;
         CapturePostsButton.IsEnabled = false;
         Status.Text = "表示中の投稿を取得しています…";
 
@@ -173,36 +199,43 @@ public partial class MainWindow : Window
             }
 
             var skipped = capture.UnreadableCards > 0 ? $" 未取得 {capture.UnreadableCards}件。" : "";
-            var dialog = new SaveFileDialog
-            {
-                Title = $"取得した投稿 {posts.Length}件を保存",
-                FileName = FormattableString.Invariant($"x-posts-{DateTime.Now:yyyyMMdd-HHmmss}.json"),
-                DefaultExt = ".json",
-                Filter = "JSON ファイル (*.json)|*.json"
-            };
-
-            if (dialog.ShowDialog(this) != true)
-            {
-                Status.Text = $"{posts.Length}件を取得しました。保存はキャンセルされました。{skipped}";
-                return;
-            }
-
-            await PostJsonFile.SaveAsync(dialog.FileName, posts);
+            Status.Text = $"{posts.Length}件の投稿をデータベースに保存しています…";
+            await PostDatabase.SaveAsync(connectionString, posts, operation.Token);
             if (!closed)
             {
-                Status.Text = $"{posts.Length}件を保存しました（{Path.GetFileName(dialog.FileName)}）。{skipped}";
+                Status.Text = $"データベースに{posts.Length}件の投稿を保存しました。{skipped}";
             }
         }
-        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException
-            or InvalidOperationException or JsonException)
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+            // Closing the main window cancels the current save.
+        }
+        catch (MySqlException ex)
         {
             if (!closed)
             {
-                Status.Text = $"投稿を取得または保存できませんでした（{ex.Message}）。";
+                Status.Text = ex.Number switch
+                {
+                    1044 or 1142 or 1143 => "DBへの保存に必要な権限がありません。接続ユーザーの権限を確認してください。",
+                    1045 => "DBの認証に失敗しました。設定画面で接続テストを実行してください。",
+                    1046 or 1049 => "保存先のデータベース名を設定画面で確認してください。",
+                    1146 => "保存先に x_posts テーブルが見つかりません。接続先とテーブルを確認してください。",
+                    1205 or 1213 => "DBで同時更新が発生しました。もう一度、表示中の投稿を取得してください。",
+                    _ => $"DBへの保存に失敗しました（コード {ex.Number}）。"
+                };
+            }
+        }
+        catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException
+            or InvalidOperationException or JsonException or TimeoutException or ArgumentException)
+        {
+            if (!closed)
+            {
+                Status.Text = "投稿を取得または保存できませんでした。検索結果とDBの接続設定を確認してください。";
             }
         }
         finally
         {
+            captureOperation = null;
             if (!closed)
             {
                 CapturePostsButton.IsEnabled = true;
@@ -240,14 +273,17 @@ public partial class MainWindow : Window
     private void NavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
         activeNavigation = e.NavigationId;
-        Status.Text = "読み込み中…";
+        if (captureOperation is null)
+        {
+            Status.Text = "読み込み中…";
+        }
     }
 
     private void NavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs e)
     {
         UpdateHistory();
         UpdatePageLabel();
-        if (e.NavigationId != activeNavigation)
+        if (e.NavigationId != activeNavigation || captureOperation is not null)
         {
             return;
         }
@@ -285,6 +321,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         closed = true;
+        captureOperation?.Cancel();
         Browser.Dispose();
         base.OnClosed(e);
     }
