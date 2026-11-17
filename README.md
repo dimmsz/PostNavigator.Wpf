@@ -1,0 +1,18 @@
+# Post Navigator
+
+Xのプロフィールを開き、アカウントと年月を指定して過去の投稿を探せるWindows向けアプリです。WPFとMicrosoft Edge WebView2を使い、Xのページをウィンドウ内に表示します。
+
+## 起動
+
+1. Visual Studio 2026で「.NET デスクトップ開発」ワークロードと.NET 10 SDKを用意します。
+2. Microsoft Edge WebView2 Evergreen Runtimeが入っていない場合は[Microsoftの配布ページ](https://developer.microsoft.com/microsoft-edge/webview2/)から導入します。
+3. `PostNavigator.Wpf.slnx` を開き、F5で起動します。
+
+コマンドラインでは `dotnet run --project PostNavigator.Wpf/PostNavigator.Wpf.csproj` で起動できます。
+
+## 使い方
+
+1. アプリ右上の「Xにログイン」からログインします。ログイン情報はWebView2がアプリ専用のプロファイルに保存します。
+2. ユーザー名（例 `@cissan_9984`）またはプロフィールURLを入力します。起動時はcis氏のプロフィールが開きます。
+3. 「プロフィール」「返信タブ」でタイムラインを開けます。古い投稿を探すには、年と月を選んで「この期間の投稿を検索」を押します。「通年」を選ぶと年全体を検索します。
+4. 検索結果はXの「最新」タブに表示されます。件数と日付の判定にはXの検索仕様が適用されます。
