@@ -9,10 +9,10 @@ internal static class VisiblePostReader
     private static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web);
     private static readonly Lazy<string> Script = new(LoadScript);
 
-    public static async Task<XPost[]> ReadAsync(CoreWebView2 browser)
+    public static async Task<VisiblePostCapture> ReadAsync(CoreWebView2 browser)
     {
         var json = await browser.ExecuteScriptAsync(Script.Value);
-        return JsonSerializer.Deserialize<XPost[]>(json, ReadOptions)
+        return JsonSerializer.Deserialize<VisiblePostCapture>(json, ReadOptions)
             ?? throw new InvalidOperationException("Xの画面から投稿データを読み取れませんでした");
     }
 
@@ -25,3 +25,5 @@ internal static class VisiblePostReader
         return reader.ReadToEnd();
     }
 }
+
+internal sealed record VisiblePostCapture(int VisibleCards, int UnreadableCards, XPost[] Posts);

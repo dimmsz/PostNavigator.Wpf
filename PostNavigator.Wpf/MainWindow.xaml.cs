@@ -158,17 +158,21 @@ public partial class MainWindow : Window
 
         try
         {
-            var posts = await VisiblePostReader.ReadAsync(web);
+            var capture = await VisiblePostReader.ReadAsync(web);
             if (closed)
             {
                 return;
             }
+            var posts = capture.Posts;
             if (posts.Length == 0)
             {
-                Status.Text = "取得できる投稿が画面内にありません。";
+                Status.Text = capture.VisibleCards == 0
+                    ? "画面内の投稿カードを認識できませんでした。投稿一覧を表示して再試行してください。"
+                    : $"投稿カードを{capture.VisibleCards}件検出しましたが、投稿ID・投稿者・日時のいずれかを読み取れませんでした。";
                 return;
             }
 
+            var skipped = capture.UnreadableCards > 0 ? $" 未取得 {capture.UnreadableCards}件。" : "";
             var dialog = new SaveFileDialog
             {
                 Title = $"取得した投稿 {posts.Length}件を保存",
@@ -179,14 +183,14 @@ public partial class MainWindow : Window
 
             if (dialog.ShowDialog(this) != true)
             {
-                Status.Text = $"{posts.Length}件を取得しました。保存はキャンセルされました。";
+                Status.Text = $"{posts.Length}件を取得しました。保存はキャンセルされました。{skipped}";
                 return;
             }
 
             await PostJsonFile.SaveAsync(dialog.FileName, posts);
             if (!closed)
             {
-                Status.Text = $"{posts.Length}件を保存しました（{Path.GetFileName(dialog.FileName)}）。";
+                Status.Text = $"{posts.Length}件を保存しました（{Path.GetFileName(dialog.FileName)}）。{skipped}";
             }
         }
         catch (Exception ex) when (ex is COMException or IOException or UnauthorizedAccessException

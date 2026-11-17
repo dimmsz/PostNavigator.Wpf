@@ -3,41 +3,53 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="設定" Width="620" SizeToContent="Height" ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Language="ja-JP"
-        FontFamily="Segoe UI, Yu Gothic UI" UseLayoutRounding="True"
-        Background="#F6F8FC" Foreground="#17243A"
+        FontSize="14" UseLayoutRounding="True"
+        Background="{DynamicResource ApplicationBackgroundBrush}"
+        Foreground="{DynamicResource TextFillColorPrimaryBrush}"
         FocusManager.FocusedElement="{Binding ElementName=MaskedConnectionString}">
     <Grid Margin="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel>
-            <TextBlock Text="データベース接続" FontSize="20" FontWeight="SemiBold" />
-            <TextBlock Text="MySQLまたはMariaDBの接続文字列を入力してください。"
-                       Foreground="#475B74" Margin="0,8,0,16" TextWrapping="Wrap" />
-            <TextBlock Text="接続文字列" FontWeight="SemiBold" Margin="0,0,0,6" />
-            <Grid>
-                <PasswordBox x:Name="MaskedConnectionString" MinHeight="36" Padding="8,7"
-                             AutomationProperties.Name="接続文字列" />
-                <TextBox x:Name="VisibleConnectionString" MinHeight="36" Padding="8,7"
-                         Visibility="Collapsed" IsUndoEnabled="False" TextWrapping="NoWrap"
-                         AutomationProperties.Name="接続文字列" />
-            </Grid>
-            <CheckBox x:Name="RevealConnectionString" Content="接続文字列を表示"
-                      Margin="0,10,0,0" Click="ToggleVisibility" />
-            <TextBlock Text="Server=localhost;Port=3306;Database=posts;User ID=app_user;Password=…;"
-                       Foreground="#475B74" Margin="0,10,0,0" TextWrapping="Wrap" />
-            <TextBlock Text="空欄で保存すると、保存済みの接続文字列を削除します。"
-                       Foreground="#475B74" Margin="0,6,0,0" TextWrapping="Wrap" />
-            <TextBlock x:Name="ErrorMessage" Foreground="#9C2626" TextWrapping="Wrap"
-                       AutomationProperties.LiveSetting="Polite" Margin="0,10,0,0"
-                       Visibility="Collapsed" />
-        </StackPanel>
+        <TextBlock Text="データベース接続" FontSize="24" FontWeight="SemiBold" Margin="0,0,0,16" />
+        <Border Grid.Row="1" Padding="16" CornerRadius="8" BorderThickness="1"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}">
+            <StackPanel>
+                <StackPanel x:Name="ConnectionInput">
+                    <TextBlock Text="接続文字列" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <Grid>
+                        <PasswordBox x:Name="MaskedConnectionString" MinHeight="36"
+                                     AutomationProperties.Name="接続文字列" PasswordChanged="ConnectionChanged" />
+                        <TextBox x:Name="VisibleConnectionString" MinHeight="36"
+                                 Visibility="Collapsed" IsUndoEnabled="False" TextWrapping="NoWrap"
+                                 AutomationProperties.Name="接続文字列" TextChanged="ConnectionChanged" />
+                    </Grid>
+                    <CheckBox x:Name="RevealConnectionString" Content="接続文字列を表示"
+                              Margin="0,10,0,0" Click="ToggleVisibility" />
+                </StackPanel>
+                <TextBlock Text="Server=localhost;Port=3306;Database=posts;User ID=app_user;Password=…;"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,10,0,0" TextWrapping="Wrap" />
+                <TextBlock Text="空欄で保存すると、保存済みの接続文字列を削除します。"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           Margin="0,6,0,0" TextWrapping="Wrap" />
+                <TextBlock x:Name="ConnectionFeedback" TextWrapping="Wrap" Margin="0,12,0,0"
+                           AutomationProperties.LiveSetting="Polite" Visibility="Collapsed" />
+            </StackPanel>
+        </Border>
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-            <Button Content="キャンセル" IsCancel="True" MinWidth="90" MinHeight="34" Margin="0,0,8,0" />
-            <Button Content="保存" IsDefault="True" MinWidth="90" MinHeight="34" Click="SaveSettings" />
-        </StackPanel>
+        <DockPanel Grid.Row="2" LastChildFill="False" Margin="0,16,0,0">
+            <Button x:Name="TestButton" DockPanel.Dock="Left" Content="接続テスト"
+                    MinHeight="34" Click="TestConnection" />
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Button Content="キャンセル" IsCancel="True" MinWidth="90" MinHeight="34" Margin="0,0,8,0" />
+                <Button x:Name="SaveButton" Content="保存" IsDefault="True" MinWidth="90" MinHeight="34"
+                        Style="{DynamicResource AccentButtonStyle}" Click="SaveSettings" />
+            </StackPanel>
+        </DockPanel>
     </Grid>
 </Window>

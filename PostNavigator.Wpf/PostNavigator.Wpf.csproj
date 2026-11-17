@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
     <EmbeddedResource Include="ReadVisiblePosts.js" />
   </ItemGroup>
 </Project>
