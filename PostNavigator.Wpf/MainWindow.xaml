@@ -58,9 +58,11 @@
 
         <Border Grid.Row="0" Background="#14223A" Padding="20,0">
             <DockPanel LastChildFill="True">
-                <Button x:Name="SignInButton" DockPanel.Dock="Right" VerticalAlignment="Center"
-                        Content="Xにログイン" Style="{StaticResource ActionButton}"
-                        IsEnabled="False" Click="OpenSignIn" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="SignInButton" Content="Xにログイン" Margin="0,0,8,0"
+                            Style="{StaticResource ActionButton}" IsEnabled="False" Click="OpenSignIn" />
+                    <Button Content="設定" Style="{StaticResource ActionButton}" Click="OpenSettings" />
+                </StackPanel>
                 <TextBlock Text="Post Navigator" Foreground="#FFFFFF" FontSize="22"
                            FontWeight="SemiBold" VerticalAlignment="Center" />
             </DockPanel>

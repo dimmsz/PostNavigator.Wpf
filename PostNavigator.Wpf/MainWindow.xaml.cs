@@ -218,6 +218,15 @@ public partial class MainWindow : Window
     }
 
     private void OpenSignIn(object sender, RoutedEventArgs e) => Navigate(XNavigation.SignIn);
+    private void OpenSettings(object sender, RoutedEventArgs e)
+    {
+        var settings = new SettingsWindow { Owner = this };
+        if (settings.ShowDialog() == true)
+        {
+            Status.Text = "データベース接続設定を保存しました。";
+        }
+    }
+
     private void OpenHome(object sender, RoutedEventArgs e) => Navigate(XNavigation.Home);
     private void Navigate(Uri uri) => Browser.CoreWebView2?.Navigate(uri.AbsoluteUri);
     private void GoBack(object sender, RoutedEventArgs e) => Browser.CoreWebView2?.GoBack();
