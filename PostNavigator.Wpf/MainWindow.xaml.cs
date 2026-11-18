@@ -71,6 +71,7 @@ public partial class MainWindow : Window
             web.HistoryChanged += (_, _) => UpdateHistory();
             web.SourceChanged += (_, _) => UpdatePageLabel();
             web.DocumentTitleChanged += (_, _) => UpdatePageLabel();
+            web.WebMessageReceived += PostsObserved;
 
             BrowserNotice.Visibility = Visibility.Collapsed;
             Browser.Visibility = Visibility.Visible;
@@ -184,6 +185,7 @@ public partial class MainWindow : Window
         }
 
         automaticCaptureSession = new AutomaticCaptureSession(connectionString);
+        UpdateCaptureProgress(automaticCaptureSession);
         automaticCaptureTimer.Start();
         Status.Text = "自動取得を開始しました。画面内の投稿をデータベースに保存します。";
     }
@@ -191,18 +193,54 @@ public partial class MainWindow : Window
     private void StopAutomaticCapture()
     {
         automaticCaptureTimer.Stop();
+        var session = automaticCaptureSession;
         automaticCaptureSession = null;
         AutomaticCaptureSwitch.IsChecked = false;
         if (captureOperationIsAutomatic)
         {
             captureOperation?.Cancel();
         }
+        if (session is not null && Browser.CoreWebView2 is { } web)
+        {
+            _ = VisiblePostReader.StopObservingAsync(web, session.Id);
+        }
+    }
+
+    private void PostsObserved(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        if (automaticCaptureSession is not { } session || closed || settingsOpen ||
+            navigationInProgress || WindowState == WindowState.Minimized || !XNavigation.IsXPage(e.Source))
+        {
+            return;
+        }
+
+        try
+        {
+            var message = VisiblePostReader.ReadMessage(e.WebMessageAsJson);
+            if (message is { Kind: "postNavigatorCapture", Capture.Posts: not null } &&
+                string.Equals(message.SessionId, session.Id, StringComparison.Ordinal))
+            {
+                session.Observe(message.Capture.Posts);
+                UpdateCaptureProgress(session);
+            }
+        }
+        catch (JsonException)
+        {
+            // Other scripts on the page can also send WebView messages.
+        }
+    }
+
+    private void UpdateCaptureProgress(AutomaticCaptureSession session)
+    {
+        var pending = session.PendingPosts(Array.Empty<XPost>()).Length;
+        CaptureProgress.Text = $"検出 {session.ObservedCount}件 / 保存確認 {session.SavedCount}件 / 保存待ち {pending}件";
+        CaptureProgress.Visibility = Visibility.Visible;
     }
 
     private async void CaptureAutomatically(object? sender, EventArgs e)
     {
         if (automaticCaptureSession is { } session && !navigationInProgress && !settingsOpen &&
-            WindowState != WindowState.Minimized)
+            WindowState != WindowState.Minimized && DateTime.UtcNow >= session.RetryAfterUtc)
         {
             await CaptureAndSaveVisiblePostsAsync(session);
         }
@@ -268,32 +306,27 @@ public partial class MainWindow : Window
 
         try
         {
-            var capture = await VisiblePostReader.ReadAsync(web);
+            var capture = await VisiblePostReader.ReadAsync(web, automaticSession?.Id);
             if (closed || operation.IsCancellationRequested || (isAutomatic && AutomaticViewportChanged()))
             {
                 return;
             }
 
             readingViewport = false;
-            var posts = capture.Posts;
+            var posts = automaticSession?.PendingPosts(capture.Posts) ?? capture.Posts;
+            if (automaticSession is not null)
+            {
+                UpdateCaptureProgress(automaticSession);
+            }
             if (posts.Length == 0)
             {
-                if (!isAutomatic || capture.VisibleCards > 0)
+                if (!isAutomatic || capture.Posts.Length == 0 && capture.VisibleCards > 0)
                 {
                     Status.Text = capture.VisibleCards == 0
                         ? "画面内の投稿カードを認識できませんでした。投稿一覧を表示して再試行してください。"
                         : $"投稿カードを{capture.VisibleCards}件検出しましたが、投稿ID・投稿者・日時のいずれかを読み取れませんでした。";
                 }
                 return;
-            }
-
-            if (automaticSession is not null)
-            {
-                posts = automaticSession.PendingPosts(posts);
-                if (posts.Length == 0)
-                {
-                    return;
-                }
             }
 
             var skipped = capture.UnreadableCards > 0 ? $" 未取得 {capture.UnreadableCards}件。" : "";
@@ -304,6 +337,7 @@ public partial class MainWindow : Window
                 string.Equals(connectionString, candidateSession.ConnectionString, StringComparison.Ordinal))
             {
                 candidateSession.MarkSaved(posts);
+                UpdateCaptureProgress(candidateSession);
             }
             if (!closed && !operation.IsCancellationRequested)
             {
@@ -319,6 +353,13 @@ public partial class MainWindow : Window
         {
             if (!closed && !operation.IsCancellationRequested)
             {
+                if (automaticSession is not null && ex.Number is 0 or 1042 or 1205 or 1213 or 2006 or 2013)
+                {
+                    automaticSession.RetryAfterUtc = DateTime.UtcNow.AddSeconds(3);
+                    Status.Text = "DBへの保存を再試行します。上下にスクロールして戻った投稿も再確認します。";
+                    return;
+                }
+
                 ReportCaptureError(ex.Number switch
                 {
                     1044 or 1142 or 1143 => "DBへの保存に必要な権限がありません。接続ユーザーの権限を確認してください。",

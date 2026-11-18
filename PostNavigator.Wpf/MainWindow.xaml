@@ -116,6 +116,9 @@
                                 </ControlTemplate>
                             </CheckBox.Template>
                         </CheckBox>
+                        <TextBlock x:Name="CaptureProgress" Margin="4,6,0,0" FontSize="12"
+                                   TextWrapping="Wrap" Visibility="Collapsed"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>
