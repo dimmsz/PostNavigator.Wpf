@@ -15,13 +15,15 @@ namespace PostNavigator.Wpf;
 public partial class MainWindow : Window
 {
     private const string InitialAccount = "cissan_9984";
+    private static readonly TimeSpan SlowScrollStepInterval = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan SlowScrollWaitInterval = TimeSpan.FromMilliseconds(500);
     private readonly DispatcherTimer automaticCaptureTimer = new(DispatcherPriority.Background)
     {
         Interval = TimeSpan.FromMilliseconds(750)
     };
     private readonly DispatcherTimer slowScrollTimer = new(DispatcherPriority.Background)
     {
-        Interval = TimeSpan.FromMilliseconds(50)
+        Interval = SlowScrollStepInterval
     };
     private readonly PostMediaArchive mediaArchive = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PostNavigator", "PostArchive"));
@@ -33,6 +35,7 @@ public partial class MainWindow : Window
     private int slowScrollRun;
     private bool scrollStepInProgress;
     private long? scrollBlockedSince;
+    private long? scrollRetrySince;
     private bool captureOperationIsAutomatic;
     private CancellationTokenSource? captureOperation;
     private CancellationTokenSource? exportOperation;
@@ -194,8 +197,10 @@ public partial class MainWindow : Window
         slowScrollRun++;
         slowScrollDirection = direction;
         scrollBlockedSince = null;
+        scrollRetrySince = null;
         ScrollStatus.Text = direction > 0 ? "下へスクロール中…" : "上へスクロール中…";
         UpdateSlowScrollButtons();
+        slowScrollTimer.Interval = SlowScrollStepInterval;
         slowScrollTimer.Start();
     }
 
@@ -230,11 +235,12 @@ public partial class MainWindow : Window
         var run = slowScrollRun;
         var direction = slowScrollDirection;
         var step = direction > 0 ? "6" : "-6";
-        var source = JsonSerializer.Serialize(web.Source);
+        bool? moved;
         scrollStepInProgress = true;
         try
         {
-            var moved = await web.ExecuteScriptAsync($$"""
+            var source = JsonSerializer.Serialize(web.Source);
+            var result = await web.ExecuteScriptAsync($$"""
                 (() => {
                     if (location.href !== new URL({{source}}).href) return null;
 
@@ -258,39 +264,77 @@ public partial class MainWindow : Window
                 })()
                 """);
 
-            if (closed || run != slowScrollRun)
+            moved = result switch
             {
-                return;
-            }
-
-            switch (moved)
-            {
-                case "true":
-                    scrollBlockedSince = null;
-                    break;
-                case "false":
-                    // X can append more posts after the viewport first reaches the bottom.
-                    scrollBlockedSince ??= Stopwatch.GetTimestamp();
-                    if (Stopwatch.GetElapsedTime(scrollBlockedSince.Value) >= TimeSpan.FromSeconds(3))
-                    {
-                        StopSlowScroll(direction > 0 ? "読み込み済みの投稿の下端に達しました。" : "上端に達しました。");
-                    }
-                    break;
-                default:
-                    StopSlowScroll("自動スクロールを中断しました。");
-                    break;
-            }
+                "true" => true,
+                "false" => false,
+                _ => null
+            };
         }
         catch (Exception ex) when (ex is InvalidOperationException or COMException)
         {
-            if (!closed && run == slowScrollRun)
-            {
-                StopSlowScroll("自動スクロールを中断しました。");
-            }
+            moved = null;
         }
         finally
         {
             scrollStepInProgress = false;
+        }
+
+        if (closed || run != slowScrollRun)
+        {
+            return;
+        }
+
+        if (moved is null)
+        {
+            scrollBlockedSince = null;
+            scrollRetrySince ??= Stopwatch.GetTimestamp();
+            if (Stopwatch.GetElapsedTime(scrollRetrySince.Value) >= TimeSpan.FromSeconds(3))
+            {
+                StopSlowScroll("自動スクロールを中断しました。");
+            }
+            else
+            {
+                WaitForSlowScroll("スクロールを再試行しています…");
+            }
+            return;
+        }
+
+        scrollRetrySince = null;
+        if (moved == false && direction > 0)
+        {
+            WaitForSlowScroll("下端で待機中。投稿が追加されると再開します。");
+            return;
+        }
+
+        if (slowScrollTimer.Interval != SlowScrollStepInterval)
+        {
+            slowScrollTimer.Interval = SlowScrollStepInterval;
+            ScrollStatus.Text = direction > 0 ? "下へスクロール中…" : "上へスクロール中…";
+        }
+
+        if (moved == true)
+        {
+            scrollBlockedSince = null;
+            return;
+        }
+
+        scrollBlockedSince ??= Stopwatch.GetTimestamp();
+        if (Stopwatch.GetElapsedTime(scrollBlockedSince.Value) >= TimeSpan.FromSeconds(3))
+        {
+            StopSlowScroll("上端に達しました。");
+        }
+    }
+
+    private void WaitForSlowScroll(string message)
+    {
+        if (slowScrollTimer.Interval != SlowScrollWaitInterval)
+        {
+            slowScrollTimer.Interval = SlowScrollWaitInterval;
+        }
+        if (ScrollStatus.Text != message)
+        {
+            ScrollStatus.Text = message;
         }
     }
 
