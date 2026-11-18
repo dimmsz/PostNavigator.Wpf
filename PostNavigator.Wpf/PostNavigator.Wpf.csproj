@@ -15,6 +15,7 @@
     <EmbeddedResource Include="ReadVisiblePosts.js" />
     <EmbeddedResource Include="ObserveVisiblePosts.js" />
     <EmbeddedResource Include="../sql/upsert_x_post.sql" LogicalName="PostNavigator.Wpf.UpsertXPost.sql" />
+    <EmbeddedResource Include="../sql/select_x_posts_by_author.sql" LogicalName="PostNavigator.Wpf.SelectXPosts.sql" />
     <Resource Include="Assets/PostNavigator.ico" />
   </ItemGroup>
 </Project>

@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Win32;
 using MySqlConnector;
 
 namespace PostNavigator.Wpf;
@@ -18,12 +19,15 @@ public partial class MainWindow : Window
     {
         Interval = TimeSpan.FromMilliseconds(750)
     };
+    private readonly PostMediaArchive mediaArchive = new(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PostNavigator", "PostArchive"));
     private ulong activeNavigation;
     private bool navigationInProgress;
     private bool closed;
     private bool settingsOpen;
     private bool captureOperationIsAutomatic;
     private CancellationTokenSource? captureOperation;
+    private CancellationTokenSource? exportOperation;
     private AutomaticCaptureSession? automaticCaptureSession;
 
     public MainWindow()
@@ -161,6 +165,72 @@ public partial class MainWindow : Window
     private async void CaptureVisiblePosts(object sender, RoutedEventArgs e)
     {
         await CaptureAndSaveVisiblePostsAsync(null);
+    }
+
+    private async void ExportHtml(object sender, RoutedEventArgs e)
+    {
+        if (exportOperation is not null || !TryReadAccount(out var account) ||
+            YearBox.SelectedItem is not int year || MonthBox.SelectedValue is not int month ||
+            !TryLoadCaptureConnection(out var connectionString))
+        {
+            return;
+        }
+
+        var dialog = new OpenFolderDialog { Title = "HTMLと添付ファイルの保存先を選ぶ" };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        using var operation = new CancellationTokenSource();
+        exportOperation = operation;
+        ExportHtmlButton.IsEnabled = false;
+        Status.Text = "保存済みの投稿をHTMLに書き出しています…";
+        try
+        {
+            var (start, end) = XNavigation.DateRange(year, month);
+            var posts = await PostDatabase.ReadAsync(connectionString, account, start, end, operation.Token);
+            if (posts.Count == 0)
+            {
+                Status.Text = "指定した期間に保存済みの投稿はありません。";
+                return;
+            }
+
+            var index = await PostHtmlExport.WriteAsync(dialog.FolderName, account, start, end, posts,
+                mediaArchive, operation.Token);
+            if (!closed)
+            {
+                Status.Text = $"{posts.Count}件を書き出しました。{index}";
+                try
+                {
+                    using var process = Process.Start(new ProcessStartInfo(index) { UseShellExecute = true });
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    // The exported file remains available when no default browser is set.
+                }
+            }
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+            // The window closed during export.
+        }
+        catch (Exception ex) when (ex is MySqlException or IOException or UnauthorizedAccessException or
+            InvalidOperationException or JsonException or ArgumentException)
+        {
+            if (!closed)
+            {
+                Status.Text = "HTMLを書き出せませんでした。DBの接続と保存先を確認してください。";
+            }
+        }
+        finally
+        {
+            exportOperation = null;
+            if (!closed)
+            {
+                ExportHtmlButton.IsEnabled = true;
+            }
+        }
     }
 
     private void AutomaticCaptureChanged(object sender, RoutedEventArgs e)
@@ -333,6 +403,11 @@ public partial class MainWindow : Window
             CapturePostsButton.IsEnabled = false;
             Status.Text = $"{posts.Length}件の投稿をデータベースに保存しています…";
             await PostDatabase.SaveAsync(connectionString, posts, operation.Token);
+            if (posts.Any(post => post.Attachments.Length > 0))
+            {
+                Status.Text = "投稿の添付ファイルを保存しています…";
+            }
+            var media = await mediaArchive.SaveAsync(posts, operation.Token);
             if (candidateSession is not null && ReferenceEquals(candidateSession, automaticCaptureSession) &&
                 string.Equals(connectionString, candidateSession.ConnectionString, StringComparison.Ordinal))
             {
@@ -342,7 +417,9 @@ public partial class MainWindow : Window
             if (!closed && !operation.IsCancellationRequested)
             {
                 var prefix = isAutomatic ? "自動取得で" : "";
-                Status.Text = $"{prefix}データベースに{posts.Length}件の投稿を保存しました。{skipped}";
+                var attachments = media.Saved + media.Unavailable > 0
+                    ? $" 添付本体 {media.Saved}件保存／未保存 {media.Unavailable}件。" : "";
+                Status.Text = $"{prefix}データベースに{posts.Length}件の投稿を保存しました。{attachments}{skipped}";
             }
         }
         catch (OperationCanceledException) when (operation.IsCancellationRequested)
@@ -506,6 +583,7 @@ public partial class MainWindow : Window
         closed = true;
         automaticCaptureTimer.Stop();
         captureOperation?.Cancel();
+        exportOperation?.Cancel();
         Browser.Dispose();
         base.OnClosed(e);
     }

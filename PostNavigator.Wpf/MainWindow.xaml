@@ -119,6 +119,8 @@
                         <TextBlock x:Name="CaptureProgress" Margin="4,6,0,0" FontSize="12"
                                    TextWrapping="Wrap" Visibility="Collapsed"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <Button x:Name="ExportHtmlButton" Content="この期間の投稿をHTMLに書き出す" Margin="0,12,0,0"
+                                HorizontalAlignment="Stretch" Click="ExportHtml" />
                     </StackPanel>
                 </ScrollViewer>
             </Border>

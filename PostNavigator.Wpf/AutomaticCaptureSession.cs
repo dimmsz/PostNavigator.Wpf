@@ -15,7 +15,7 @@ internal sealed class AutomaticCaptureSession(string connectionString)
     {
         Observe(posts);
         return observedPosts.Values.Where(post =>
-            !savedPosts.TryGetValue(post.Id, out var previous) || previous != post).ToArray();
+            !savedPosts.TryGetValue(post.Id, out var previous) || !previous.HasSameContent(post)).ToArray();
     }
 
     public void Observe(IEnumerable<XPost> posts)
@@ -24,7 +24,7 @@ internal sealed class AutomaticCaptureSession(string connectionString)
         {
             if (!observedPosts.TryGetValue(post.Id, out var previous))
             {
-                observedPosts[post.Id] = post;
+                observedPosts[post.Id] = post with { Attachments = PostMediaArchive.Merge([], post.Attachments) };
                 continue;
             }
 
@@ -34,6 +34,7 @@ internal sealed class AutomaticCaptureSession(string connectionString)
                     previous.IsTextTruncated && post.Text.Length > previous.Text.Length);
             observedPosts[post.Id] = post with
             {
+                Attachments = PostMediaArchive.Merge(previous.Attachments, post.Attachments),
                 Text = replaceText ? post.Text : previous.Text,
                 IsTextTruncated = replaceText ? post.IsTextTruncated : previous.IsTextTruncated,
                 AuthorDisplayName = string.IsNullOrEmpty(post.AuthorDisplayName)
@@ -46,7 +47,7 @@ internal sealed class AutomaticCaptureSession(string connectionString)
     {
         foreach (var post in posts)
         {
-            savedPosts[post.Id] = post;
+            savedPosts[post.Id] = post with { Attachments = PostMediaArchive.Merge([], post.Attachments) };
         }
     }
 }

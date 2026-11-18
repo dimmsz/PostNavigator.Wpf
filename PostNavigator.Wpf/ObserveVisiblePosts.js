@@ -30,10 +30,12 @@
                     observer = new MutationObserver(schedule);
                     observer.observe(document.documentElement, {
                         childList: true, subtree: true, characterData: true,
-                        attributes: true, attributeFilter: ["datetime", "href"]
+                        attributes: true, attributeFilter: ["datetime", "href", "src", "srcset", "poster", "alt"]
                     });
                     document.addEventListener("scroll", schedule, { capture: true, passive: true });
                     window.addEventListener("resize", schedule, { passive: true });
+                    document.addEventListener("load", schedule, true);
+                    document.addEventListener("loadedmetadata", schedule, true);
                 }
             },
             stop(id) {
@@ -43,6 +45,8 @@
                 observer = null;
                 document.removeEventListener("scroll", schedule, true);
                 window.removeEventListener("resize", schedule);
+                document.removeEventListener("load", schedule, true);
+                document.removeEventListener("loadedmetadata", schedule, true);
                 if (timer !== null) clearTimeout(timer);
                 timer = null;
             }

@@ -5,7 +5,8 @@ namespace PostNavigator.Wpf;
 
 internal static class PostDatabase
 {
-    private static readonly Lazy<string> UpsertSql = new(LoadUpsertSql);
+    private static readonly Lazy<string> UpsertSql = new(() => LoadSql("UpsertXPost.sql"));
+    private static readonly Lazy<string> SelectSql = new(() => LoadSql("SelectXPosts.sql"));
 
     public static async Task SaveAsync(string connectionString, IReadOnlyList<XPost> posts,
         CancellationToken cancellationToken)
@@ -44,10 +45,32 @@ internal static class PostDatabase
         await transaction.CommitAsync(cancellationToken);
     }
 
-    private static string LoadUpsertSql()
+    public static async Task<List<XPost>> ReadAsync(string connectionString, string account, DateOnly start,
+        DateOnly end, CancellationToken cancellationToken)
     {
-        using var stream = typeof(PostDatabase).Assembly.GetManifestResourceStream("PostNavigator.Wpf.UpsertXPost.sql")
-            ?? throw new InvalidOperationException("投稿保存用のSQLが見つかりません");
+        await using var connection = new MySqlConnection(connectionString);
+        await connection.OpenAsync(cancellationToken);
+        await using var command = new MySqlCommand(SelectSql.Value, connection);
+        command.Parameters.AddWithValue("@AuthorHandle", account);
+        command.Parameters.AddWithValue("@StartUtc", start.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+        command.Parameters.AddWithValue("@EndUtc", end.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc));
+
+        var posts = new List<XPost>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            posts.Add(new XPost(reader.GetString(0), reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetString(3),
+                new DateTimeOffset(DateTime.SpecifyKind(reader.GetDateTime(4), DateTimeKind.Utc)),
+                reader.GetString(5), reader.GetBoolean(6)));
+        }
+        return posts;
+    }
+
+    private static string LoadSql(string name)
+    {
+        using var stream = typeof(PostDatabase).Assembly.GetManifestResourceStream($"PostNavigator.Wpf.{name}")
+            ?? throw new InvalidOperationException($"投稿用SQLが見つかりません。{name}");
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
     }
