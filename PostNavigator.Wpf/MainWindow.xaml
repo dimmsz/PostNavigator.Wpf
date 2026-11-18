@@ -119,6 +119,21 @@
                         <TextBlock x:Name="CaptureProgress" Margin="4,6,0,0" FontSize="12"
                                    TextWrapping="Wrap" Visibility="Collapsed"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="自動スクロール" Margin="0,16,0,6" />
+                        <UniformGrid Rows="1" Columns="3">
+                            <Button x:Name="ScrollUpButton" Content="上へ" Margin="0,0,4,0" Padding="6,5"
+                                    HorizontalAlignment="Stretch" IsEnabled="False" Click="ScrollSlowlyUp"
+                                    ToolTip="Xの投稿一覧をゆっくり上にスクロールします" />
+                            <Button x:Name="StopScrollButton" Content="停止" Margin="2,0" Padding="6,5"
+                                    HorizontalAlignment="Stretch" IsEnabled="False" Click="StopSlowScrolling"
+                                    ToolTip="自動スクロールを停止します" />
+                            <Button x:Name="ScrollDownButton" Content="下へ" Margin="4,0,0,0" Padding="6,5"
+                                    HorizontalAlignment="Stretch" IsEnabled="False" Click="ScrollSlowlyDown"
+                                    ToolTip="Xの投稿一覧をゆっくり下にスクロールします" />
+                        </UniformGrid>
+                        <TextBlock x:Name="ScrollStatus" Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   AutomationProperties.LiveSetting="Polite" />
                         <Button x:Name="ExportHtmlButton" Content="この期間の投稿をHTMLに書き出す" Margin="0,12,0,0"
                                 HorizontalAlignment="Stretch" Click="ExportHtml" />
                     </StackPanel>

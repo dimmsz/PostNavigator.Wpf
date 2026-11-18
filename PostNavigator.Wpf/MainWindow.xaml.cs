@@ -19,12 +19,20 @@ public partial class MainWindow : Window
     {
         Interval = TimeSpan.FromMilliseconds(750)
     };
+    private readonly DispatcherTimer slowScrollTimer = new(DispatcherPriority.Background)
+    {
+        Interval = TimeSpan.FromMilliseconds(50)
+    };
     private readonly PostMediaArchive mediaArchive = new(Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PostNavigator", "PostArchive"));
     private ulong activeNavigation;
     private bool navigationInProgress;
     private bool closed;
     private bool settingsOpen;
+    private int slowScrollDirection;
+    private int slowScrollRun;
+    private bool scrollStepInProgress;
+    private long? scrollBlockedSince;
     private bool captureOperationIsAutomatic;
     private CancellationTokenSource? captureOperation;
     private CancellationTokenSource? exportOperation;
@@ -45,6 +53,7 @@ public partial class MainWindow : Window
         MonthBox.SelectedValue = 0;
 
         automaticCaptureTimer.Tick += CaptureAutomatically;
+        slowScrollTimer.Tick += ScrollStep;
         Loaded += InitializeBrowser;
     }
 
@@ -73,7 +82,11 @@ public partial class MainWindow : Window
             web.NavigationStarting += NavigationStarting;
             web.NavigationCompleted += NavigationCompleted;
             web.HistoryChanged += (_, _) => UpdateHistory();
-            web.SourceChanged += (_, _) => UpdatePageLabel();
+            web.SourceChanged += (_, _) =>
+            {
+                StopSlowScroll();
+                UpdatePageLabel();
+            };
             web.DocumentTitleChanged += (_, _) => UpdatePageLabel();
             web.WebMessageReceived += PostsObserved;
 
@@ -167,6 +180,120 @@ public partial class MainWindow : Window
         await CaptureAndSaveVisiblePostsAsync(null);
     }
 
+    private void ScrollSlowlyUp(object sender, RoutedEventArgs e) => StartSlowScroll(-1);
+    private void ScrollSlowlyDown(object sender, RoutedEventArgs e) => StartSlowScroll(1);
+    private void StopSlowScrolling(object sender, RoutedEventArgs e) => StopSlowScroll("停止しました。");
+
+    private void StartSlowScroll(int direction)
+    {
+        if (navigationInProgress || Browser.CoreWebView2 is not { } web || !XNavigation.IsXPage(web.Source))
+        {
+            return;
+        }
+
+        slowScrollRun++;
+        slowScrollDirection = direction;
+        scrollBlockedSince = null;
+        ScrollStatus.Text = direction > 0 ? "下へスクロール中…" : "上へスクロール中…";
+        UpdateSlowScrollButtons();
+        slowScrollTimer.Start();
+    }
+
+    private void StopSlowScroll(string message = "")
+    {
+        if (slowScrollDirection != 0)
+        {
+            slowScrollTimer.Stop();
+            slowScrollRun++;
+            slowScrollDirection = 0;
+        }
+
+        ScrollStatus.Text = message;
+        UpdateSlowScrollButtons();
+    }
+
+    private void UpdateSlowScrollButtons()
+    {
+        var available = !navigationInProgress && Browser.CoreWebView2 is { } web && XNavigation.IsXPage(web.Source);
+        ScrollUpButton.IsEnabled = available && slowScrollDirection != -1;
+        ScrollDownButton.IsEnabled = available && slowScrollDirection != 1;
+        StopScrollButton.IsEnabled = slowScrollDirection != 0;
+    }
+
+    private async void ScrollStep(object? sender, EventArgs e)
+    {
+        if (closed || scrollStepInProgress || slowScrollDirection == 0 || Browser.CoreWebView2 is not { } web)
+        {
+            return;
+        }
+
+        var run = slowScrollRun;
+        var direction = slowScrollDirection;
+        var step = direction > 0 ? "6" : "-6";
+        var source = JsonSerializer.Serialize(web.Source);
+        scrollStepInProgress = true;
+        try
+        {
+            var moved = await web.ExecuteScriptAsync($$"""
+                (() => {
+                    if (location.href !== new URL({{source}}).href) return null;
+
+                    let container = document.querySelector('[data-testid="primaryColumn"]');
+                    while (container && container !== document.body && container !== document.documentElement) {
+                        if (container.scrollHeight > container.clientHeight) {
+                            const overflow = getComputedStyle(container).overflowY;
+                            if (overflow === "auto" || overflow === "scroll") break;
+                        }
+                        container = container.parentElement;
+                    }
+
+                    if (!container || container === document.body || container === document.documentElement) {
+                        container = document.scrollingElement;
+                    }
+                    if (!container) return false;
+
+                    const previousTop = container.scrollTop;
+                    container.scrollBy({ top: {{step}}, behavior: "instant" });
+                    return container.scrollTop !== previousTop;
+                })()
+                """);
+
+            if (closed || run != slowScrollRun)
+            {
+                return;
+            }
+
+            switch (moved)
+            {
+                case "true":
+                    scrollBlockedSince = null;
+                    break;
+                case "false":
+                    // X can append more posts after the viewport first reaches the bottom.
+                    scrollBlockedSince ??= Stopwatch.GetTimestamp();
+                    if (Stopwatch.GetElapsedTime(scrollBlockedSince.Value) >= TimeSpan.FromSeconds(3))
+                    {
+                        StopSlowScroll(direction > 0 ? "読み込み済みの投稿の下端に達しました。" : "上端に達しました。");
+                    }
+                    break;
+                default:
+                    StopSlowScroll("自動スクロールを中断しました。");
+                    break;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException)
+        {
+            if (!closed && run == slowScrollRun)
+            {
+                StopSlowScroll("自動スクロールを中断しました。");
+            }
+        }
+        finally
+        {
+            scrollStepInProgress = false;
+        }
+    }
+
     private async void ExportHtml(object sender, RoutedEventArgs e)
     {
         if (exportOperation is not null || !TryReadAccount(out var account) ||
@@ -176,6 +303,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        StopSlowScroll();
         var dialog = new OpenFolderDialog { Title = "HTMLと添付ファイルの保存先を選ぶ" };
         if (dialog.ShowDialog(this) != true)
         {
@@ -497,6 +625,7 @@ public partial class MainWindow : Window
     private void OpenSignIn(object sender, RoutedEventArgs e) => Navigate(XNavigation.SignIn);
     private void OpenSettings(object sender, RoutedEventArgs e)
     {
+        StopSlowScroll();
         settingsOpen = true;
         try
         {
@@ -527,6 +656,7 @@ public partial class MainWindow : Window
     {
         activeNavigation = e.NavigationId;
         navigationInProgress = true;
+        StopSlowScroll();
         if (captureOperation is null)
         {
             Status.Text = "読み込み中…";
@@ -543,6 +673,7 @@ public partial class MainWindow : Window
         }
 
         navigationInProgress = false;
+        UpdateSlowScrollButtons();
         if (captureOperation is not null)
         {
             return;
@@ -582,10 +713,20 @@ public partial class MainWindow : Window
     {
         closed = true;
         automaticCaptureTimer.Stop();
+        slowScrollTimer.Stop();
         captureOperation?.Cancel();
         exportOperation?.Cancel();
         Browser.Dispose();
         base.OnClosed(e);
+    }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized && slowScrollDirection != 0)
+        {
+            StopSlowScroll();
+        }
     }
 
     private sealed record MonthOption(int Number, string Label);
